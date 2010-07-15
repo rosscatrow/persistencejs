@@ -391,9 +391,10 @@ var persistence = (window && window.persistence) ? window.persistence : {};
      * Remove all tables in the database (as defined by the model)
      */
     persistence.reset = function (tx, callback) {
+		
       var session = this;
       if(!tx) {
-        this.transaction(function(tx) { session.reset(tx); });
+        this.transaction(function(tx) { session.reset(tx, callback); });
         return;
       }
       // First sync the schema
@@ -890,7 +891,7 @@ var persistence = (window && window.persistence) ? window.persistence : {};
        * @param callback (jsonDump) the callback function called with the results.
        */
       persistence.loadFromJson = function(tx, jsonDump, callback) {
-        this.load(tx, JSON.parse(json), callback);
+        this.load(tx, JSON.parse(jsonDump), callback);
       };
 
       /**
@@ -1167,15 +1168,6 @@ var persistence = (window && window.persistence) ? window.persistence : {};
           return "`" + alias + '`.`' + this.property + "` IS NULL";
         } else if (this.operator === '!=' && this.value === null) {
           return "`" + alias + '`.`' + this.property + "` IS NOT NULL";
-        } else if (this.operator === 'in') {
-          var vals = this.value;
-          var qs = [];
-          for(var i = 0; i < vals.length; i++) {
-            qs.push('?');
-            values.push(persistence.entityValToDbVal(vals[i]));
-          }
-
-          return "`" + alias + '`.`' + this.property + "` IN (" + qs.join(', ') + ")";
         } else {
           var value = this.value;
           if(value === true || value === false) {
@@ -1205,9 +1197,6 @@ var persistence = (window && window.persistence) ? window.persistence : {};
           break;
         case '>=':
           return o[this.property] >= this.value;
-          break;
-        case 'in':
-          return arrayContains(this.values, o[this.property]);
           break;
         }
       }
