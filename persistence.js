@@ -521,7 +521,11 @@ var persistence = (window && window.persistence) ? window.persistence : {};
       } else if (type == 'DATE') {
         // In order to make SQLite Date/Time functions work we should store
         // values in seconds and not as miliseconds as JS Date.getTime()
-        return Math.round(val.getTime() / 1000);
+		
+		// data coming in from JSON is just a string and needs to be converted to a Date
+		// otherwise .getTime() doesn't exist
+		var valData = new Date(val);
+        return Math.round(valData.getTime() / 1000);
       } else {
         return val;
       }
