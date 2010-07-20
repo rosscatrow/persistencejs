@@ -524,7 +524,7 @@ var persistence = (window && window.persistence) ? window.persistence : {};
         return val.id;
       } else if (type === 'BOOL') {
         return val ? 1 : 0;
-      } else if (type == 'DATE') {
+      } else if (type === 'DATE' || val.getTime) {
         // In order to make SQLite Date/Time functions work we should store
         // values in seconds and not as miliseconds as JS Date.getTime()
 		
@@ -791,7 +791,9 @@ var persistence = (window && window.persistence) ? window.persistence : {};
               if(results.length == 0) {
                 callback(null);
               } else {
-                callback(session.rowToEntity(entityName, results[0]));
+                var obj = session.rowToEntity(entityName, results[0]);
+                session.add(obj);
+                callback(obj);
               }
             });
         }
@@ -1255,8 +1257,12 @@ var persistence = (window && window.persistence) ? window.persistence : {};
             qs.push('?');
             values.push(persistence.entityValToDbVal(vals[i]));
           }
-
-          return "`" + alias + '`.`' + this.property + "` IN (" + qs.join(', ') + ")";
+          if(vals.length === 0) {
+            // Optimize this a little
+            return "1 = 0";
+          } else {
+            return "`" + alias + '`.`' + this.property + "` IN (" + qs.join(', ') + ")";
+          }
         } else if (this.operator === 'not in') {
           var vals = this.value;
           var qs = [];
@@ -1265,7 +1271,12 @@ var persistence = (window && window.persistence) ? window.persistence : {};
             values.push(persistence.entityValToDbVal(vals[i]));
           }
 
-          return "`" + alias + '`.`' + this.property + "` NOT IN (" + qs.join(', ') + ")";
+          if(vals.length === 0) {
+            // Optimize this a little
+            return "1 = 1";
+          } else {
+            return "`" + alias + '`.`' + this.property + "` NOT IN (" + qs.join(', ') + ")";
+          }
         } else {
           var value = this.value;
           if(value === true || value === false) {

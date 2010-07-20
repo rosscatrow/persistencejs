@@ -2,7 +2,7 @@
 // Data model
 var Task = persistence.define('Task', {
     name: "TEXT",
-    done: "TEXT",
+    done: "BOOL",
     lastChange: "DATE"
 });
 
@@ -20,6 +20,7 @@ function syncAll() {
 function addTask() {
   var t = new Task();
   t.name = "Some new local task";
+  t.done = false;
   t.lastChange = new Date();
   persistence.add(t);
   persistence.flush();
