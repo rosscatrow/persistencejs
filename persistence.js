@@ -329,12 +329,18 @@ var persistence = (window && window.persistence) ? window.persistence : {};
      *            function to be called when done
      */
     persistence.flush = function (tx, callback) {
-      var args = argspec.getArgs(arguments, [
+		var myCallback = callback;
+      
+		var args = argspec.getArgs(arguments, [
           { name: "tx", optional: true, check: isTransaction },
           { name: "callback", optional: true, check: argspec.isCallback(), defaultValue: function(){} }
         ]);
       tx = args.tx;
       callback = args.callback;
+	  	
+		if(myCallback) {
+			callback = myCallback;
+		}
 
       var session = this;
       if(!tx) {
@@ -918,7 +924,7 @@ var persistence = (window && window.persistence) ? window.persistence : {};
        */
       persistence.load = function(tx, dump, callback) {
         var args = argspec.getArgs(arguments, [
-            { name: 'tx', optional: true, check: isTransaction },
+            { name: 'tx', optional: true, check: isTransaction, defaultValue: null},
             { name: 'dump', optional: false },
             { name: 'callback', optional: false, check: argspec.isCallback(), defaultValue: function(){} }
           ]);
@@ -1998,7 +2004,8 @@ var persistence = (window && window.persistence) ? window.persistence : {};
           var that = {};
           that.executeSql = function (query, args, successFn, errorFn) {
               if(persistence.db.log) {
-                  console.log(query);
+   				console.log(query);
+				console.log(args);
               }
               t.executeSql(query, args, function (_, result) {
                   if (successFn) {
