@@ -1,10 +1,9 @@
-// Some utility methods
 function createMigrations(starting, amount, actions){
   var amount = starting+amount;
   
   for (var i = starting; i < amount; i++) {
     var newActions = {
-      up: actions.up,
+     up: actions.up,
       down: actions.down
     };
     
@@ -16,70 +15,6 @@ function createMigrations(starting, amount, actions){
     
     persistence.defineMigration(i, newActions);
   }
-}
-
-function tableExists(name, callback){
-  var sql = 'select name from sqlite_master where type = "table" and name == "'+name+'"';
-  persistence.transaction(function(tx){
-    tx.executeSql(sql, null, function(result){
-      ok(result.length == 1, name + ' table exists');
-      if (callback) callback();
-    });
-  });
-}
-
-function tableNotExists(name, callback){
-  var sql = 'select name from sqlite_master where type = "table" and name == "'+name+'"';
-  persistence.transaction(function(tx){
-    tx.executeSql(sql, null, function(result){
-      ok(result.length == 0, name + ' table not exists');
-      if (callback) callback();
-    });
-  });
-}
-
-function columnExists(table, column, type, callback) {
-  var sql = 'select sql from sqlite_master where type = "table" and name == "'+table+'"';
-  type = type.replace('(', '\\(').replace(')', '\\)');
-  var regex = "CREATE TABLE \\w+ \\((\\w|[\\(\\), ])*" + column + " " + type + "(\\w|[\\(\\), ])*\\)";
-  persistence.transaction(function(tx){
-    tx.executeSql(sql, null, function(result){
-      ok(result[0].sql.match(regex), column + ' colum exists');
-      if (callback) callback();
-    });
-  });
-}
-
-function columnNotExists(table, column, type, callback) {
-  var sql = 'select sql from sqlite_master where type = "table" and name == "'+table+'"';
-  type = type.replace('(', '\\(').replace(')', '\\)');
-  var regex = "CREATE TABLE \\w+ \\((\\w|[\\(\\), ])*" + column + " " + type + "(\\w|[\\(\\), ])*\\)";
-  persistence.transaction(function(tx){
-    tx.executeSql(sql, null, function(result){
-      ok(!result[0].sql.match(regex), column + ' colum not exists');
-      if (callback) callback();
-    });
-  });
-}
-
-function indexExists(table, column, callback) {
-  var sql = 'select sql from sqlite_master where type = "index" and name == "'+table+'_'+column+'"';
-  persistence.transaction(function(tx){
-    tx.executeSql(sql, null, function(result){
-      ok(result.length == 1, 'index ' + table + '_' + column + ' exists');
-      if (callback) callback();
-    });
-  });
-}
-
-function indexNotExists(table, column, callback) {
-  var sql = 'select sql from sqlite_master where type = "index" and name == "'+table+'_'+column+'"';
-  persistence.transaction(function(tx){
-    tx.executeSql(sql, null, function(result){
-      ok(result.length == 0, 'index ' + table + '_' + column + ' not exists');
-      if (callback) callback();
-    });
-  });
 }
 
 var Migrator = persistence.migrations.Migrator;
@@ -463,9 +398,9 @@ asyncTest("Adding and retrieving Entity after migration", 1, function(){
   var task = new this.Task({name: 'test'});
   var allTasks = this.Task.all();
   
-  persistence.add(task).flush(null, function() {
+  persistence.add(task).flush(function() {
     persistence.clean(); delete task;
-    allTasks.list(null, function(result){
+    allTasks.list(function(result){
       equals(result.length, 1, 'task found');
       start();
     });
@@ -512,7 +447,7 @@ asyncTest("Running custom actions", 2, function(){
   var allUsers = this.User.all();
   
   function addUsers() {
-    persistence.add(user1).add(user2).flush(null, createAndRunMigration);
+    persistence.add(user1).add(user2).flush(createAndRunMigration);
   }
 
   function createAndRunMigration() {
@@ -534,7 +469,7 @@ asyncTest("Running custom actions", 2, function(){
   }
   
   function assertUpdated() {
-    allUsers.list(null, function(result){
+    allUsers.list(function(result){
       result.forEach(function(u){
         ok(u.email == u.userName + '@domain.com');
       });

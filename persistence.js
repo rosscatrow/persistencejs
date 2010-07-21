@@ -36,7 +36,26 @@ try {
   exports.console = console;
 }
 
-var persistence = (window && window.persistence) ? window.persistence : {};
+var persistence = (window && window.persistence) ? window.persistence : {}; 
+ 
+/**
+ * Default getter/setter implementation for entity properties 
+ */
+persistence.defineProp = function(scope, field, setterCallback, getterCallback) {
+    scope.__defineSetter__(field, function (val) {
+        setterCallback(val);
+    });
+    scope.__defineGetter__(field, function () {
+        return getterCallback();
+    });
+};
+ 
+/**
+ * Depends on getter / setter implementation
+ */
+persistence.entityPropToEntityVal = function(val) { 
+    return val; 
+};
 
 (function () {
     var entityMeta = {};
@@ -250,7 +269,7 @@ var persistence = (window && window.persistence) ? window.persistence : {};
           for (var rel in meta.hasOne) {
             if (meta.hasOne.hasOwnProperty(rel)) {
               otherMeta = meta.hasOne[rel].type.meta;
-              rowDef += rel + " VARCHAR(255), ";
+              rowDef += rel + " VARCHAR(32), ";
               queries.push( [
                   //"CREATE INDEX IF NOT EXISTS `" + meta.name + "_" + rel + "_" + otherMeta.name
                   "CREATE INDEX `" + meta.name + "_" + rel + "_" + otherMeta.name
@@ -305,7 +324,7 @@ var persistence = (window && window.persistence) ? window.persistence : {};
       if (!this.trackedObjects[obj.id]) {
         this.trackedObjects[obj.id] = obj;
       }
-      return persistence;
+      return this;
     };
 
     /**
@@ -317,7 +336,7 @@ var persistence = (window && window.persistence) ? window.persistence : {};
         this.objectsToRemove[obj.id] = obj;
       }
       this.objectRemoved(obj);
-      return persistence;
+      return this;
     };
 
     /**
@@ -411,6 +430,9 @@ var persistence = (window && window.persistence) ? window.persistence : {};
      */
     persistence.clean = function () {
       this.trackedObjects = {};
+      this.objectsToRemove = {};
+      this.globalPropertyListeners = {};
+      this.queryCollectionCache = {};
     }
 
     /**
@@ -492,6 +514,9 @@ var persistence = (window && window.persistence) ? window.persistence : {};
      * (also does type conversions, if necessary)
      */
     persistence.dbValToEntityVal = function (val, type) {
+      if(val === null || val === undefined) {
+        return val;
+      }
       switch (type) {
       case 'DATE':
         // SQL is in seconds and JS in miliseconds
@@ -516,6 +541,7 @@ var persistence = (window && window.persistence) ? window.persistence : {};
      *   dbValToEntityVal)
      */
     persistence.entityValToDbVal = function (val, type) {
+      val = persistence.entityPropToEntityVal(val);
       if (val === undefined || val === null) {
         return null;
       } else if (type === 'JSON' && val) {
@@ -571,19 +597,20 @@ var persistence = (window && window.persistence) ? window.persistence : {};
 
         for ( var field in meta.fields) {
           (function () {
-              if (meta.fields.hasOwnProperty(field)) {
+              if (meta.fields.hasOwnProperty(field)) {    
                 var f = field; // Javascript scopes/closures SUCK
-                that.__defineSetter__(f, function (val) {
-                    var oldValue = that._data[f];
-                    that._data[f] = val;
-                    that._dirtyProperties[f] = oldValue;
-                    that.triggerEvent('set', that, f, val);
-                    that.triggerEvent('change', that, f, val);
-                    session.propertyChanged(that, f, oldValue, val);
-                  });
-                that.__defineGetter__(f, function () {
-                    return that._data[f];
-                  });
+                persistence.defineProp(that, f, function(val) {
+                  // setterCallback
+                  var oldValue = that._data[f];
+                  that._data[f] = val;
+                  that._dirtyProperties[f] = oldValue;
+                  that.triggerEvent('set', that, f, val);
+                  that.triggerEvent('change', that, f, val);
+                  session.propertyChanged(that, f, oldValue, val); 
+                }, function() {
+                  // getterCallback 
+                  return that._data[f];
+                });
                 that._data[field] = defaultValue(meta.fields[field]);
               }
             }());
@@ -592,34 +619,36 @@ var persistence = (window && window.persistence) ? window.persistence : {};
         for ( var it in meta.hasOne) {
           if (meta.hasOne.hasOwnProperty(it)) {
             (function () {
-                var ref = it;
-                that.__defineSetter__(ref, function (val) {
-                    var oldValue = that._data[ref];
-                    if (val == null) {
-                      that._data[ref] = null;
-                      that._data_obj[ref] = undefined;
-                    } else if (val.id) {
-                      that._data[ref] = val.id;
-                      that._data_obj[ref] = val;
-                      session.add(val);
-                    } else { // let's assume it's an id
-                      that._data[ref] = val;
-                    }
-                    that._dirtyProperties[ref] = oldValue;
-                    that.triggerEvent('set', that, ref, val);
-                    that.triggerEvent('change', that, f, val);
-                  });
-                that.__defineGetter__(ref, function () {
-                    if (that._data[ref] === null || that._data_obj[ref] !== undefined) {
-                      return that._data_obj[ref];
-                    } else if(that._data[ref] !== null && session.trackedObjects[that._data[ref]]) {
-                      that._data_obj[ref] = session.trackedObjects[that._data[ref]];
-                      return that._data_obj[ref];
-                    } else {
-                      throw "Property '" + ref + "' with id: " + that._data[ref]
-                      + " not fetched, either prefetch it or fetch it manually.";
-                    }
-                  });
+                var ref = it; 
+                persistence.defineProp(that, ref, function(val) {
+                  // setterCallback
+                  var oldValue = that._data[ref];
+                  if (val == null) {
+                    that._data[ref] = null;
+                    that._data_obj[ref] = undefined;
+                  } else if (val.id) {
+                    that._data[ref] = val.id;
+                    that._data_obj[ref] = val;
+                    session.add(val);
+                    session.add(that);
+                  } else { // let's assume it's an id
+                    that._data[ref] = val;
+                  }
+                  that._dirtyProperties[ref] = oldValue;
+                  that.triggerEvent('set', that, ref, val);
+                  that.triggerEvent('change', that, ref, val);
+                }, function() {
+                  // getterCallback 
+                  if (that._data[ref] === null || that._data_obj[ref] !== undefined) {
+                    return that._data_obj[ref];
+                  } else if(that._data[ref] !== null && session.trackedObjects[that._data[ref]]) {
+                    that._data_obj[ref] = session.trackedObjects[that._data[ref]];
+                    return that._data_obj[ref];
+                  } else {
+                    throw "Property '" + ref + "' with id: " + that._data[ref]
+                    + " not fetched, either prefetch it or fetch it manually.";
+                  }
+                });
               }());
           }
         }
@@ -629,59 +658,60 @@ var persistence = (window && window.persistence) ? window.persistence : {};
             (function () {
                 var coll = it;
                 if (meta.hasMany[coll].manyToMany) {
-                  that.__defineSetter__(coll, function (val) {
-                      if(val && val._items) { 
-                        // Local query collection, just add each item
-                        // TODO: this is technically not correct, should clear out existing items too
-                        var items = val._items;
-                        for(var i = 0; i < items.length; i++) {
-                          that[coll].add(items[i]);
-                        }
-                      } else {
+                  persistence.defineProp(that, coll, function(val) {
+                    // setterCallback
+                    if(val && val._items) { 
+                      // Local query collection, just add each item
+                      // TODO: this is technically not correct, should clear out existing items too
+                      var items = val._items;
+                      for(var i = 0; i < items.length; i++) {
+                        that[coll].add(items[i]);
+                      }
+                    } else {
                         throw "Not yet supported.";
-                      }
-                    });
-                  that.__defineGetter__(coll,
-                    function () {
-                      if (this._data[coll]) {
-                        return that._data[coll];
-                      } else {
-                        var inverseMeta = meta.hasMany[coll].type.meta;
-
-                        var queryColl = new ManyToManyDbQueryCollection(session, inverseMeta.name);
-                        queryColl.initManyToMany(that, coll);
-                        queryColl._additionalJoinSqls.push("LEFT JOIN `"
-                          + meta.hasMany[coll].tableName + "` AS mtm ON mtm.`"
-                          + inverseMeta.name + '_' + meta.hasMany[coll].inverseProperty
-                          + "` = `" + inverseMeta.name + "`.`id` ");
-                        queryColl._additionalWhereSqls.push("mtm.`" + meta.name + '_' + coll
-                          + "` = '" + that.id + "'");
-                        that._data[coll] = queryColl;
-                        return session.uniqueQueryCollection(queryColl);
-                      }
-                    });
+                    } 
+                  }, function() {
+                    // getterCallback 
+                    if (that._data[coll]) {
+                      return that._data[coll];
+                    } else {
+                      var inverseMeta = meta.hasMany[coll].type.meta;
+                  
+                      var queryColl = new ManyToManyDbQueryCollection(session, inverseMeta.name);
+                      queryColl.initManyToMany(that, coll);
+                      queryColl._additionalJoinSqls.push("LEFT JOIN `"
+                        + meta.hasMany[coll].tableName + "` AS mtm ON mtm.`"
+                        + inverseMeta.name + '_' + meta.hasMany[coll].inverseProperty
+                        + "` = `root`.`id` ");
+                      queryColl._additionalWhereSqls.push("mtm.`" + meta.name + '_' + coll
+                        + "` = '" + that.id + "'");
+                      that._data[coll] = queryColl;
+                      return session.uniqueQueryCollection(queryColl);
+                    }
+                  });
                 } else {
-                  that.__defineSetter__(coll, function (val) {
-                      if(val && val._items) { 
-                        // Local query collection, just add each item
-                        // TODO: this is technically not correct, should clear out existing items too
-                        var items = val._items;
-                        for(var i = 0; i < items.length; i++) {
-                          that[coll].add(items[i]);
-                        }
-                      } else {
-                        throw "Not yet supported.";
+                  persistence.defineProp(that, coll, function(val) {
+                    // setterCallback
+                    if(val && val._items) { 
+                      // Local query collection, just add each item
+                      // TODO: this is technically not correct, should clear out existing items too
+                      var items = val._items;
+                      for(var i = 0; i < items.length; i++) {
+                        that[coll].add(items[i]);
                       }
-                    });
-                  that.__defineGetter__(coll, function () {
-                      if (this._data[coll]) {
+                    } else {
+                      throw "Not yet supported.";
+                    }
+                  }, function() {
+                    // getterCallback 
+                    if (that._data[coll]) {
                         return that._data[coll];
-                      } else {
-                        var queryColl = session.uniqueQueryCollection(new DbQueryCollection(session, meta.hasMany[coll].type.meta.name).filter(meta.hasMany[coll].inverseProperty, '=', that));
-                        that._data[coll] = queryColl;
-                        return queryColl;
-                      }
-                    });
+                    } else {
+                      var queryColl = session.uniqueQueryCollection(new DbQueryCollection(session, meta.hasMany[coll].type.meta.name).filter(meta.hasMany[coll].inverseProperty, '=', that));
+                      that._data[coll] = queryColl;
+                      return queryColl;
+                    }
+                  });
                 }
               }());
             }
@@ -986,6 +1016,13 @@ var persistence = (window && window.persistence) ? window.persistence : {};
         var values = [];
         var qs = [];
         var propertyPairs = [];
+        if(obj._new) { // Mark all properties dirty
+          for (var p in meta.fields) {
+            if(meta.fields.hasOwnProperty(p)) {
+              obj._dirtyProperties[p] = true;
+            }
+          }
+        }
         for ( var p in obj._dirtyProperties) {
           if (obj._dirtyProperties.hasOwnProperty(p)) {
             properties.push("`" + p + "`");
@@ -1288,30 +1325,39 @@ var persistence = (window && window.persistence) ? window.persistence : {};
       }
 
       PropertyFilter.prototype.match = function (o) {
+        var value = this.value;
+        var propValue = o[this.property];
+        if(value && value.getTime) { // DATE
+          // TODO: Deal with arrays of dates for 'in' and 'not in'
+          value = Math.round(value.getTime() / 1000) * 1000; // Deal with precision
+          if(propValue && propValue.getTime) { // DATE
+            propValue = Math.round(propValue.getTime() / 1000) * 1000; // Deal with precision
+          }
+        }
         switch (this.operator) {
         case '=':
-          return o[this.property] === this.value;
+          return propValue === value;
           break;
         case '!=':
-          return o[this.property] !== this.value;
+          return propValue !== value;
           break;
         case '<':
-          return o[this.property] < this.value;
+          return propValue < value;
           break;
         case '<=':
-          return o[this.property] <= this.value;
+          return propValue <= value;
           break;
         case '>':
-          return o[this.property] > this.value;
+          return propValue > value;
           break;
         case '>=':
-          return o[this.property] >= this.value;
+          return propValue >= value;
           break;
         case 'in':
-          return arrayContains(this.value, o[this.property]);
+          return arrayContains(value, propValue);
           break;
         case 'not in':
-          return !arrayContains(this.value, o[this.property]);
+          return !arrayContains(value, propValue);
           break;
         }
       }
