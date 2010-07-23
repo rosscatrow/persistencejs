@@ -553,10 +553,7 @@ persistence.entityPropToEntityVal = function(val) {
       } else if (type === 'DATE' || val.getTime) {
         // In order to make SQLite Date/Time functions work we should store
         // values in seconds and not as miliseconds as JS Date.getTime()
-		
-		// data coming in from JSON is just a string and needs to be converted to a Date
-		// otherwise .getTime() doesn't exist
-		var valData = new Date(val);
+		var valData = new Date();
         return Math.round(valData.getTime() / 1000);
       } else {
         return val;
@@ -1731,6 +1728,7 @@ persistence.entityPropToEntityVal = function(val) {
         if(this._skip > 0) {
           sql += " OFFSET " + this._skip;
         }
+		
         session.flush(tx, function () {
             tx.executeSql(sql, args, function (rows) {
                 var results = [];
