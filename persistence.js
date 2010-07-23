@@ -348,18 +348,12 @@ persistence.entityPropToEntityVal = function(val) {
      *            function to be called when done
      */
     persistence.flush = function (tx, callback) {
-		var myCallback = callback;
-      
 		var args = argspec.getArgs(arguments, [
           { name: "tx", optional: true, check: isTransaction },
           { name: "callback", optional: true, check: argspec.isCallback(), defaultValue: function(){} }
         ]);
       tx = args.tx;
       callback = args.callback;
-	  	
-		if(myCallback) {
-			callback = myCallback;
-		}
 
       var session = this;
       if(!tx) {
